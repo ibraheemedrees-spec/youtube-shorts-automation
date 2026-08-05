@@ -1,0 +1,72 @@
+name: توليد يوتيوب شورتس عربي
+
+on:
+  # تشغيل يدوي فقط
+  workflow_dispatch:
+    inputs:
+      max_videos:
+        description: "عدد الفيديوهات اللي هتتولد في المرة دي"
+        required: false
+        default: "3"
+        type: choice
+        options:
+          - "1"
+          - "2"
+          - "3"
+          - "4"
+          - "5"
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-noto-core fonts-noto-ui-core fonts-noto-extra
+          fc-list :lang=ar | head -5 || true
+
+      - name: Install Python packages
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Generate Shorts
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          MAX_VIDEOS: ${{ github.event.inputs.max_videos || '3' }}
+          ARABIC_VOICE: "ar-EG-SalmaNeural"
+        run: |
+          python scripts/generate_shorts.py
+
+      - name: Upload videos + thumbnails as Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: youtube-shorts-${{ github.run_number }}
+          path: |
+            output/*.mp4
+            output/*.jpg
+            output/*.json
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Commit updated topics (move done titles)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add topics/ || true
+          git diff --staged --quiet || git commit -m "chore: mark topics as done [skip ci]"
+          git push || true
+        continue-on-error: true
